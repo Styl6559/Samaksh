@@ -1,155 +1,194 @@
-# Samaksh — Assistive Reading Device
+# 👁️ Samaksh — AI Blind Assistance System
 
-A small, offline-capable reading assistant that runs on a **Raspberry Pi Zero 2W**. Point a webcam at any printed text — a book page, a letter, a medicine label — and it reads it out loud. Ask a follow-up question with your voice and it answers using GPT-4o-mini.
+A real-time assistive system for visually impaired users, powered by **Raspberry Pi**, **Gemini 2.5 Flash**, and **Firebase**.
 
-Built as a working prototype for visually impaired users. No cloud dependency for the core read-aloud feature — it works without internet.
+## How It Works
+
+```
+📱 Mobile Website  ←→  🔥 Firebase  ←→  🍓 Raspberry Pi + Webcam → 🤖 Gemini AI
+     (Voice I/O)        (Real-time)        (Image Capture)           (Vision AI)
+```
+
+1. **User speaks** a command on the website (e.g., "read this", "where am I")
+2. **Website sends** the command to Firebase
+3. **Raspberry Pi reads** the command, captures an image with the webcam
+4. **Gemini 2.5 Flash** analyzes the image and generates a response
+5. **Response is sent** back through Firebase to the website
+6. **Website speaks** the response aloud in the user's chosen language
+
+### Two Modes
+
+| Mode | How It Works |
+|------|-------------|
+| **🧭 Navigation** | Pi auto-captures every 7 seconds and provides walking guidance (obstacles, directions) |
+| **💬 Normal** | User gives voice commands; Pi captures one image per command and responds |
 
 ---
 
-## What it does
+## Prerequisites
 
-1. **Captures** a frame from your USB webcam
-2. **Cleans up** the image with OpenCV (grayscale → denoise → threshold)
-3. **Reads the text** using EasyOCR — supports Hindi, English, and 80+ other languages
-4. **Speaks it aloud** using pyttsx3 + espeak (fully offline)
-5. **Listens for a question** via USB microphone (optional, needs internet)
-6. **Answers it** using OpenAI GPT-4o-mini and reads the answer back
+- **Raspberry Pi** (any model) with a **USB webcam**
+- **Firebase project** with Realtime Database enabled
+- **Gemini API key** from [Google AI Studio](https://aistudio.google.com/)
+- **Node.js 18+** (for the website)
+- **Python 3.9+** (on the Raspberry Pi)
+- **Chrome/Edge** browser on phone (for Web Speech API)
 
 ---
 
-## Hardware
+## Setup Guide
 
-| Component | Details |
-|---|---|
-| Board | Raspberry Pi Zero 2W |
-| OS | Raspberry Pi OS Lite (64-bit) |
-| Camera | Any USB webcam |
-| Microphone | Any USB microphone |
-| Speaker | USB or 3.5mm audio output |
-| RAM | 512 MB (works fine for core features) |
+### Step 1: Firebase Setup
+
+1. Go to [Firebase Console](https://console.firebase.google.com/) → **Create Project**
+2. Enable **Realtime Database** (not Firestore)
+   - Choose your preferred region
+   - Start in **Test mode** (or set rules below)
+3. Set database rules (for prototype — open access):
+   ```json
+   {
+     "rules": {
+       ".read": true,
+       ".write": true
+     }
+   }
+   ```
+4. Go to **Project Settings → General** → Add a **Web App** → Copy the config object
+5. Go to **Project Settings → Service Accounts** → **Generate new private key** → Save the JSON file
+
+### Step 2: Website Setup
+
+```bash
+cd website
+npm install
+```
+
+Copy the environment template and add your Firebase configuration:
+```bash
+cp .env.example .env
+```
+Edit the `.env` file to match your Firebase config:
+```
+VITE_FIREBASE_API_KEY="your-actual-api-key"
+VITE_FIREBASE_AUTH_DOMAIN="your-project.firebaseapp.com"
+VITE_FIREBASE_DATABASE_URL="https://your-project-default-rtdb.firebaseio.com"
+VITE_FIREBASE_PROJECT_ID="your-project"
+VITE_FIREBASE_STORAGE_BUCKET="your-project.appspot.com"
+VITE_FIREBASE_MESSAGING_SENDER_ID="123456789"
+VITE_FIREBASE_APP_ID="1:123456789:web:abcdef"
+```
+
+Start the dev server:
+```bash
+npm run dev
+```
+
+Open `http://localhost:5173` on your phone's Chrome browser (both devices must be on the same network, use the network URL shown in terminal).
+
+### Step 3: Deploy Website to Netlify (Optional)
+
+You can easily host this Vite React app on Netlify for free:
+1. Push the `website/` folder to a GitHub repository.
+2. Log into [Netlify](https://www.netlify.com/) and click **Add new site** → **Import an existing project**.
+3. Connect your GitHub repository.
+4. Configure the build settings:
+   - **Base directory**: `website`
+   - **Build command**: `npm run build`
+   - **Publish directory**: `website/dist`
+5. Click **Deploy site**.
+6. Open the Netlify URL on your phone's browser.
+
+---
+
+### Step 4: Raspberry Pi Setup
+
+Copy the `ai/` folder and your Firebase service account JSON to the Pi.
+
+```bash
+# Install system dependency for OpenCV
+sudo apt update
+sudo apt install python3-opencv
+
+# Create and activate a Python virtual environment (required on newer Raspberry Pi OS)
+# --system-site-packages lets the venv access apt-installed packages like python3-opencv
+cd ai
+python3 -m venv --system-site-packages venv
+source venv/bin/activate
+
+# Install Python packages
+pip3 install -r requirements.txt
+
+# Set up environment variables
+cp .env.example .env
+# Edit the .env file and add your GEMINI_API_KEY and FIREBASE_DB_URL
+nano .env
+
+# Run
+python3 ai.py
+```
+
+---
+
+## Voice Commands
+
+| Command | What Happens |
+|---------|-------------|
+| **"mode navigation"** | Switches to navigation mode (auto-capture every 7s) |
+| **"mode normal"** | Switches back to normal mode |
+| **"read this"** / **"read the newspaper"** | Captures image and reads all visible text |
+| **"where am I"** | Captures image and describes surroundings |
+| **Any other phrase** | Captures image and answers based on what's visible |
+
+---
+
+## Supported Languages
+
+Audio output is translated and spoken in the user's selected language.
+
+### Indian Languages
+Hindi, Bengali, Tamil, Telugu, Kannada, Malayalam, Marathi, Gujarati, Punjabi, Odia
+
+### International Languages
+English, Spanish, French, German, Japanese, Chinese, Arabic, Portuguese
 
 ---
 
 ## Project Structure
 
 ```
-samaksh/
-├── assistive_reader.py   # main script — run this
-├── setup.sh              # one-time setup for a fresh Pi
+Samaksh/
+├── website/                  # React website (Vite)
+│   ├── src/
+│   │   ├── App.jsx           # Root component (state management)
+│   │   ├── firebase.js       # Firebase config & helpers
+│   │   ├── languages.js      # Language definitions & translation
+│   │   ├── components/
+│   │   │   ├── Onboarding.jsx   # Name + language setup
+│   │   │   └── MainScreen.jsx   # Mode toggle + messages
+│   │   └── hooks/
+│   │       ├── useSpeechRecognition.js  # Continuous voice input
+│   │       └── useTextToSpeech.js       # Translated TTS output
+│   └── index.html
+├── raspberry_pi/
+│   ├── ai.py         # Main Pi script
+│   └── requirements.txt      # Python dependencies
 └── README.md
 ```
 
 ---
 
-## Getting Started
+## Troubleshooting
 
-### 1. Clone the repo
-
-```bash
-git clone https://github.com/YOUR_USERNAME/samaksh.git
-cd samaksh
-```
-
-### 2. Run setup (once)
-
-```bash
-bash setup.sh
-```
-
-This will install all system packages and Python dependencies. EasyOCR will download its model weights (~100 MB) the first time you run the script — that's normal, it only happens once and gets cached.
-
-### 3. Set your OpenAI API key
-
-Open `assistive_reader.py` and find this line near the top:
-
-```python
-OPENAI_API_KEY = "sk-YOUR_OPENAI_API_KEY_HERE"
-```
-
-Replace it with your actual key. This is only needed for the voice question feature. If you just want read-aloud without Q&A, you can leave it as-is.
-
-### 4. Run it
-
-```bash
-python3 assistive_reader.py
-```
-
-Hold a document in front of the webcam when prompted. After it reads the text, you'll be asked if you want to ask a question.
-
----
-
-## Configuration
-
-All tunable settings are at the top of `assistive_reader.py`:
-
-```python
-CAMERA_INDEX    = 0          # change if your webcam isn't index 0
-OCR_LANGUAGES   = ["en", "hi"]   # add any EasyOCR language codes here
-MIC_RECORD_SECONDS = 6       # how long to listen for a question
-STT_LANGUAGE    = "hi-IN"    # language hint for Google speech recognition
-TTS_RATE        = 145        # speaking speed (words per minute)
-```
-
-### Supported OCR languages (sample)
-
-| Code | Language |
-|---|---|
-| `en` | English |
-| `hi` | Hindi |
-| `fr` | French |
-| `de` | German |
-| `es` | Spanish |
-| `ar` | Arabic |
-| `zh_sim` | Simplified Chinese |
-| `ja` | Japanese |
-
-Full list: [EasyOCR supported languages](https://www.jaided.ai/easyocr/)
-
----
-
-## How the offline TTS works
-
-pyttsx3 uses **espeak-ng** as its backend on Raspberry Pi OS Lite. No internet, no API calls — it synthesises speech directly on the device. The voice won't win any awards, but it's clear, fast, and works at 512 MB RAM.
-
-If you want a better voice, look into `mimic3` or `piper-tts` as drop-in espeak replacements.
-
----
-
-## Voice Question Mode
-
-After the text is read aloud, the script asks if you want to ask a question. Press **Enter** to proceed or type `skip` to exit.
-
-- Your question is recorded from the USB microphone
-- Sent to Google Speech-to-Text (needs Wi-Fi)
-- The OCR text + your question go to GPT-4o-mini
-- The answer comes back and is spoken aloud
-
-The model is told to reply in the **same language you asked in**, so you can ask in Hindi and get a Hindi answer, ask in English and get English, etc.
-
----
-
-## Known limitations
-
-- **EasyOCR on Pi Zero 2W is slow** — expect 15–40 seconds for OCR on a full page. The model is CPU-only. For faster results, consider Pi 4 or Pi 5.
-- **Handwritten text** recognition is hit-or-miss. EasyOCR handles printed text well.
-- **Low-light images** will degrade OCR accuracy. Good, even lighting makes a big difference.
-- **Voice questions need internet.** The Google STT API is free within limits but requires a connection.
-
----
-
-## Dependencies
-
-```
-opencv-python-headless   — image capture and preprocessing
-easyocr                  — multilingual OCR (no Tesseract needed)
-pyttsx3                  — offline text-to-speech
-SpeechRecognition        — microphone input + Google STT
-pyaudio                  — audio I/O backend for SpeechRecognition
-openai                   — GPT-4o-mini for question answering
-```
+| Issue | Solution |
+|-------|----------|
+| Camera not found | Try `ls /dev/video*` on Pi. Change `CAMERA_INDEX` in the script. |
+| Speech recognition not working | Use Chrome/Edge. Safari has limited support. |
+| No audio output on phone | Tap the screen first — browsers require user interaction for audio. |
+| Firebase errors | Double-check your config and database URL. Ensure Realtime Database (not Firestore) is enabled. |
+| Gemini errors | Verify your API key at [Google AI Studio](https://aistudio.google.com/). |
 
 ---
 
 ## License
 
-MIT — do whatever you want with it. If it helps someone, that's the point.
+MIT — Built for accessibility. 🤍
